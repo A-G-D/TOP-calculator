@@ -164,7 +164,7 @@ function parseExpressionGroups(expressionString) {
                     groups.push(parseExpressionGroups(segment));
                     segment = '';
                     if ((i + 1 < expressionString.length) &&
-                            expressionString[i + 1] !== OP_MUL) {
+                            isNumber(expressionString[i + 1])) {
                         segment = OP_MUL;
                     }
                 }
@@ -197,8 +197,7 @@ function parseExpressionNodes(expressionTerms, allowAsUnary, ...operators) {
                         nodes.push(segment);
                         nodes.push(c);
                         segment = '';
-                    }
-                    else if (allowAsUnary) {
+                    } else if (allowAsUnary) {
                         segment += c;
                     }
 
