@@ -19,6 +19,19 @@ function isNumber(s) {
     return Number.isFinite(parseInt(s, 10));
 }
 
+function arrToStr(a, quoteStrings = true) {
+    if (Array.isArray(a)) {
+        let s = '[';
+        for (let i = 0; i < a.length; ++i) {
+            s += arrToStr(a[i]);
+            if (i + 1 < a.length)
+                s += ', ';
+        }
+        return s + ']';
+    }
+    return ((typeof a) === 'string' && quoteStrings)? `'${a}'` : a.toString();
+}
+
 
 class ExpressionTree {
     #left;
@@ -100,9 +113,12 @@ class ExpressionTree {
     }
 
     toString(indent = '') {
-        let s = `${indent}${this.data}\n`;
-        let newIndent = indent + '\t';
+        let s = `${indent}${this.data}`;
 
+        if (isNull(this.left) && isNull(this.right)) return s;
+
+        let newIndent = indent + '\t';
+        s += '\n';
         s += indent + '{\n';
         if (isNull(this.left))
             s += newIndent + 'NULL,\n';
@@ -117,6 +133,7 @@ class ExpressionTree {
         return s;
     }
 }
+
 
 function parseExpressionGroups(expressionString) {
     let groups = [];
@@ -200,6 +217,7 @@ function parseExpressionNodes(expressionTerms, allowAsUnary, ...operators) {
     return nodes;
 }
 
+
 function generateExpressionTree(exprNodes) {
     if (!Array.isArray(exprNodes))
         return new ExpressionTree(exprNodes);
@@ -240,6 +258,7 @@ function generateExpressionTree(exprNodes) {
     throw new Error('UNKNOWN ERROR'); // This shouldn't happen
 }
 
+
 // Will not parse ill-formed expressions
 function parseExpression(expressionString) {
     // "1 + 2 - 3*4 + 5*(6 + 7)/8^9";
@@ -252,18 +271,19 @@ function parseExpression(expressionString) {
     expressionString = expressionString.replace(/\s+/g, '');
 
     let exprGroups = parseExpressionGroups(expressionString);
-    console.log('groups: ', exprGroups);
+    console.log('groups: ', arrToStr(exprGroups));
     let exprTerms = parseExpressionNodes(exprGroups, true, OP_ADD, OP_SUB);
-    console.log('terms: ', exprTerms);
+    console.log('terms: ', arrToStr(exprTerms));
     let exprNodes = parseExpressionNodes(exprTerms, false, OP_MUL, OP_DIV);
-    console.log('nodes:', exprNodes);
+    console.log('nodes:', arrToStr(exprNodes));
     exprNodes = parseExpressionNodes(exprNodes, false, OP_POW);
-    console.log('nodes:', exprNodes);
+    console.log('nodes:', arrToStr(exprNodes));
     exprNodes = parseExpressionNodes(exprNodes, false, OP_EXP);
-    console.log('nodes:', exprNodes);
+    console.log('nodes:', arrToStr(exprNodes));
 
     return generateExpressionTree(exprNodes);
 }
+
 
 function evaluateExpression(expression) {
     let result;
