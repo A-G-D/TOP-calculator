@@ -17,7 +17,7 @@ function isNull(o) {
 }
 
 function isNumber(s) {
-    return Number.isFinite(parseInt(s, 10));
+    return Number.isFinite(parseFloat(s, 10));
 }
 
 function arrToStr(a, quoteStrings = true) {
@@ -38,32 +38,6 @@ class ExpressionTree {
     #left;
     #right;
     #data;
-
-    static #operate(op, left, right) {
-        switch (op) {
-            case OP_ADD:
-                if (isNull(left)) left = 0;
-                return left + right;
-            
-            case OP_SUB:
-                if (isNull(left)) left = 0;
-                return left - right;
-
-            case OP_MUL:
-                return left*right;
-
-            case OP_DIV:
-                return left/right;
-
-            case OP_POW:
-                return left**right;
-
-            case OP_EXP:
-                return left*Math.pow(10, right);
-        }
-
-        throw new Error('INVALID OPERATION ARGUMENT');
-    }
 
     constructor(data, left = undefined, right = undefined) {
         if ((Array.isArray(data)) && left === undefined && right === undefined) {
@@ -200,10 +174,7 @@ class ExpressionParser {
                                     rightExpr.push(...slice);
                             }
 
-                            // console.log('right expr: ', arrToStr(rightExpr));
                             nodes.push(ExpressionParser.#parseNodes(rightExpr, allowAsUnary, ...operators));
-                            // console.log('right nodes: ', nodes[nodes.length - 1]);
-                            // // segment = '';
 
                             return nodes;
 
@@ -270,7 +241,6 @@ class ExpressionParser {
         expressionString = expressionString.replace(/\s+/g, '');
 
         let exprNodes = this.#parseGroups(expressionString);
-        // console.log('groups: ', arrToStr(exprNodes));
 
         for (let i = this.#operators.length - 1; i >= 0; --i) {
             const operator = this.#operators[i];
@@ -279,50 +249,68 @@ class ExpressionParser {
                 operator.unaryFlag,
                 operator.symbol
             );
-            // console.log('operator: ', operator.symbol);
-            // console.log('nodes: ', (exprNodes));
         }
-        // console.log('final nodes: ', arrToStr(exprNodes));
 
         return new ExpressionTree(exprNodes);
     }
 
     operate(operator, leftOperand, rightOperand) {
         if (isNumber(operator))
-            return parseInt(operator, 10);
+            return parseFloat(operator, 10);
 
         return this.getOperator(operator).procedure(leftOperand, rightOperand);
+    }
+
+    evaluate(expression) {
+        const expressionTree = expressionParser.parseExpression(expression);
+        return expressionTree.traversePostorder(expressionParser.operate.bind(expressionParser));
     }
 }
 
 
-const expressionParser = new ExpressionParser();
+// 
 
-expressionParser.addOperator(OP_ADD, (left, right) => left + right, true, 0);
-expressionParser.addOperator(OP_SUB, (left, right) => left - right, true, 0);
-expressionParser.addOperator(OP_MUL, (left, right) => left*right, false, 1);
-expressionParser.addOperator(OP_DIV, (left, right) => left/right, false, 1);
-expressionParser.addOperator(OP_POW, (left, right) => Math.pow(left, right), false, 2);
-expressionParser.addOperator(OP_MOD, (left, right) => left%right, false, 2);
-expressionParser.addOperator(OP_EXP, (left, right) => left*Math.pow(10, right), false, 3);
-
-
-function evaluateExpression(expression) {
-    const expressionTree = expressionParser.parseExpression(expression);
-    console.log('tree: ', expressionTree.toString());
-    const result = expressionTree.traversePostorder(expressionParser.operate.bind(expressionParser));
-    return result
+function isCharValid(c) {
+    return (
+        /[0-9.E]/.match(c) !== null ||
+        expressionParser.operators.some(op => op.symbol === c)
+    );
 }
 
+function createExpressionParser() {
+    const parser = new ExpressionParser();
 
-console.log('TEST 0:');
-let result = evaluateExpression("4^2*3");
-console.log(result + '\n\n');
+    parser.addOperator(OP_ADD, (left, right) => left + right, true, 0);
+    parser.addOperator(OP_SUB, (left, right) => left - right, true, 0);
+    parser.addOperator(OP_MUL, (left, right) => left*right, false, 1);
+    parser.addOperator(OP_DIV, (left, right) => left/right, false, 1);
+    parser.addOperator(OP_POW, (left, right) => Math.pow(left, right), false, 2);
+    parser.addOperator(OP_MOD, (left, right) => left%right, false, 2);
+    parser.addOperator(OP_EXP, (left, right) => left*Math.pow(10, right), false, 3);
 
-console.log('TEST 1:');
-result = evaluateExpression("-2 + (-5*6)  (4^2*3)");
-console.log(result + '\n\n');
+    return parser;
+}
 
-console.log('TEST 2:');
-result = evaluateExpression("-2 + 4*3 + 5");
-console.log(result + '\n\n');
+// function evaluateExpression(expression) {
+//     const expressionTree = expressionParser.parseExpression(expression);
+//     // console.log('tree: ', expressionTree.toString());
+//     return expressionTree.traversePostorder(expressionParser.operate.bind(expressionParser));
+// }
+
+
+// 
+
+const expressionParser = createExpressionParser();
+
+// console.log('TEST 0:');
+// let result = expressionParser.evaluate("4^2*3");
+// console.log(result + '\n\n');
+
+// console.log('TEST 1:');
+// result = expressionParser.evaluate("-2 + (-5*6)  (4^2*3)");
+// console.log(result + '\n\n');
+
+// console.log('TEST 2:');
+// result = expressionParser.evaluate("-2 + 4*3 + 5");
+// console.log(result + '\n\n');
+
