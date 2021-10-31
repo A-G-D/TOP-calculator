@@ -3,6 +3,7 @@ const OP_SUB = '-';
 const OP_MUL = '*';
 const OP_DIV = '/';
 const OP_POW = '^';
+const OP_MOD = '%';
 const OP_EXP = 'E';
 
 const EXPRGROUP_IDENTITY = '1';
@@ -65,9 +66,20 @@ class ExpressionTree {
     }
 
     constructor(data, left = undefined, right = undefined) {
-        this.#data = data;
-        this.#left = left;
-        this.#right = right;
+        if ((Array.isArray(data)) && left === undefined && right === undefined) {
+            const n = data.length;
+            if (n == 1) {
+                this.#data = data[0];
+            } else {
+                this.#data = data[1];
+                this.#left = new ExpressionTree(data[0]);
+                this.#right = new ExpressionTree(data[2]);
+            }
+        } else {
+            this.#data = data;
+            this.#left = left;
+            this.#right = right;
+        }
     }
 
     get left() {
@@ -80,36 +92,11 @@ class ExpressionTree {
         return this.#data;
     }
 
-    evaluate() {
-        const operator = this.data;
-
-        // console.log(`preeval: ${parseInt(operator, 10)} ${this.left} ${this.right}`);
-        if (isNumber(operator))
-            return parseInt(operator, 10);
-
-        const leftOperand = isNull(this.left)? undefined : this.left.evaluate();
-        const rightOperand = isNull(this.right)? undefined : this.right.evaluate();
-
-        // console.log(`eval: ${operator} ${leftOperand} ${rightOperand}`);
-        return ExpressionTree.#operate(operator, leftOperand, rightOperand);
-    }
-
-    traversePreorder(onTraverse) {
-        onTraverse(this.data);
-        if (!isNull(this.left)) this.left.traversePreorder(onTraverse);
-        if (!isNull(this.right)) this.right.traversePreorder(onTraverse);
-    }
-
-    traverseInorder(onTraverse) {
-        if (!isNull(this.left)) this.left.traverseInorder(onTraverse);
-        onTraverse(this.data);
-        if (!isNull(this.right)) this.right.traverseInorder(onTraverse);
-    }
-
     traversePostorder(onTraverse) {
-        if (!isNull(this.left)) this.left.traversePostorder(onTraverse);
-        if (!isNull(this.right)) this.right.traversePostorder(onTraverse);
-        onTraverse(this.data);
+        const left = isNull(this.left)? undefined : this.left.traversePostorder(onTraverse);
+        const right = isNull(this.right)? undefined : this.right.traversePostorder(onTraverse);
+
+        return onTraverse(this.data, left, right);
     }
 
     toString(indent = '') {
@@ -135,169 +122,207 @@ class ExpressionTree {
 }
 
 
-function parseExpressionGroups(expressionString) {
-    let groups = [];
-    let segment = '';
-    let level = 0;
+class ExpressionParser {
+    #operators;
+    #opDictionary;
 
-    for (let i = 0; i < expressionString.length; ++i) {
-        const c = expressionString[i];
+    #parseGroups(expressionString) {
+        const groups = [];
+        let segment = '';
+        let level = 0;
 
-        switch (c) {
-            case EXPRGROUP_BEGIN:
-                if (level === 0) {
-                    if (segment.length > 0) {
-                        if (isNumber(segment[segment.length - 1]))
-                            segment += OP_MUL;
-                        groups.push(segment);
+        for (let i = 0; i < expressionString.length; ++i) {
+            const c = expressionString[i];
+
+            switch (c) {
+                case EXPRGROUP_BEGIN:
+                    if (level === 0) {
+                        if (segment.length > 0) {
+                            if (isNumber(segment[segment.length - 1]))
+                                segment += OP_MUL;
+                            groups.push(segment);
+                            segment = '';
+                        }
+                    }
+                    ++level;
+                    break;
+    
+                case EXPRGROUP_END:
+                    --level;
+                    if (level === 0) {
+                        if (segment.length === 0)
+                            segment = EXPRGROUP_IDENTITY;
+                        groups.push(this.#parseGroups(segment));
                         segment = '';
+                        if ((i + 1 < expressionString.length) &&
+                                !this.isOperatorSymbol(expressionString[i + 1])) {
+                            segment = OP_MUL;
+                        }
                     }
-                }
-                ++level;
-                break;
-
-            case EXPRGROUP_END:
-                --level;
-                if (level === 0) {
-                    if (segment.length === 0)
-                        segment = EXPRGROUP_IDENTITY;
-                    groups.push(parseExpressionGroups(segment));
-                    segment = '';
-                    if ((i + 1 < expressionString.length) &&
-                            isNumber(expressionString[i + 1])) {
-                        segment = OP_MUL;
-                    }
-                }
-                break;
-
-            default:
-                segment += c;
+                    break;
+    
+                default:
+                    segment += c;
+            }
         }
+
+        if (segment.length > 0)
+            groups.push(segment);
+
+        return groups;
     }
 
-    if (segment.length > 0)
-        groups.push(segment);
+    static #parseNodes(expressionNodes, allowAsUnary, ...operators) {
+        const nodes = [];
 
-    return groups;
-}
+        for (let i = 0; i < expressionNodes.length; ++i) {
+            const node = expressionNodes[i];
+            let segment = '';
 
-function parseExpressionNodes(expressionTerms, allowAsUnary, ...operators) {
-    let nodes = [];
+            if ((typeof node) === 'string') {
+                for (let j = 0; j < node.length; ++j) {
+                    const c = node[j];
 
-    for (let i = 0; i < expressionTerms.length; ++i) {
-        const term = expressionTerms[i];
-        let segment = '';
+                    if (operators.some(value => value === c)) {
+                        if (segment.length > 0 || nodes.length > 0) {
+                            if (segment.length > 0)
+                                nodes.push([segment]);
+                            nodes.push(c);
 
-        if ((typeof term) === 'string') {
-            for (let j = 0; j < term.length; ++j) {
-                const c = term[j];
+                            const rightExpr = [];
+                            if (j + 1 < node.length)
+                                rightExpr.push(node.substr(j + 1));
+                            if (i + 1 < expressionNodes.length) {
+                                const slice = expressionNodes.slice(i + 1)
+                                if (slice.length == 1)
+                                    rightExpr.push(...slice[0]);
+                                else
+                                    rightExpr.push(...slice);
+                            }
 
-                if (operators.some(value => value === c)) {
-                    if (segment.length > 0) {
-                        nodes.push(segment);
-                        nodes.push(c);
-                        segment = '';
-                    } else if (allowAsUnary) {
+                            // console.log('right expr: ', arrToStr(rightExpr));
+                            nodes.push(ExpressionParser.#parseNodes(rightExpr, allowAsUnary, ...operators));
+                            // console.log('right nodes: ', nodes[nodes.length - 1]);
+                            // // segment = '';
+
+                            return nodes;
+
+                        } else if (allowAsUnary) {
+                            segment += c;
+                        }
+
+                    } else {
                         segment += c;
                     }
-
-                } else {
-                    segment += c;
                 }
+
+                if (segment.length > 0)
+                    nodes.push(segment);
+
+            } else {
+                nodes.push(ExpressionParser.#parseNodes(node, allowAsUnary, ...operators));
             }
-
-            if (segment.length > 0)
-                nodes.push(segment);
-        } else {
-            nodes.push(parseExpressionNodes(term, allowAsUnary, ...operators));
         }
+
+        return nodes;
     }
 
-    return nodes;
-}
+    constructor() {
+        this.#operators = [];
+        this.#opDictionary = {};
+    }
 
+    get operators() {
+        return this.#operators;
+    }
 
-function generateExpressionTree(exprNodes) {
-    if (!Array.isArray(exprNodes))
+    addOperator(op, procedure, allowAsUnary = false, priority = 0) {
+        let operator = {
+            symbol: op,
+            procedure: procedure,
+            unaryFlag: allowAsUnary,
+            priority: priority,
+        };
+
+        let i = this.#operators.length - 1;
+        for (; i >= 0; --i) {
+            if (priority <= this.#operators[i].priority)
+                break;
+        }
+
+        if (i + 1 < this.#operators.length)
+            this.#operators.splice(i + 1, 0, operator);
+        else
+            this.#operators.push(operator);
+        this.#opDictionary[op] = operator;
+    }
+
+    isOperatorSymbol(c) {
+        return this.#operators.some(item => item.symbol === c);
+    }
+
+    getOperator(symbol) {
+        return this.#opDictionary[symbol];
+    }
+
+    // Will not parse ill-formed expressions
+    parseExpression(expressionString) {
+        expressionString = expressionString.replace(/\s+/g, '');
+
+        let exprNodes = this.#parseGroups(expressionString);
+        // console.log('groups: ', arrToStr(exprNodes));
+
+        for (let i = this.#operators.length - 1; i >= 0; --i) {
+            const operator = this.#operators[i];
+            exprNodes = ExpressionParser.#parseNodes(
+                exprNodes,
+                operator.unaryFlag,
+                operator.symbol
+            );
+            // console.log('operator: ', operator.symbol);
+            // console.log('nodes: ', (exprNodes));
+        }
+        // console.log('final nodes: ', arrToStr(exprNodes));
+
         return new ExpressionTree(exprNodes);
-
-    const n = exprNodes.length;
-
-    if (n == 1) {
-        return generateExpressionTree(exprNodes[0]);
-
-    } else if (n == 2) {
-        if ((typeof exprNodes[0]) === 'string') {
-            return new ExpressionTree(
-                exprNodes[0],
-                generateExpressionTree(exprNodes[1])
-            );
-        }
-        return new ExpressionTree(
-            OP_MUL,
-            generateExpressionTree(exprNodes[0]),
-            generateExpressionTree(exprNodes[1])
-        );
-
-    } else if (n > 2) {
-        if ((typeof exprNodes[1]) === 'string') {
-            return new ExpressionTree(
-                exprNodes[1],
-                generateExpressionTree(exprNodes[0]),
-                generateExpressionTree(exprNodes.slice(2))
-            );
-        }
-        return new ExpressionTree(
-            OP_MUL,
-            generateExpressionTree(exprNodes[0]),
-            generateExpressionTree(exprNodes.slice(1))
-        );
     }
 
-    throw new Error('UNKNOWN ERROR'); // This shouldn't happen
+    operate(operator, leftOperand, rightOperand) {
+        if (isNumber(operator))
+            return parseInt(operator, 10);
+
+        return this.getOperator(operator).procedure(leftOperand, rightOperand);
+    }
 }
 
 
-// Will not parse ill-formed expressions
-function parseExpression(expressionString) {
-    // "1 + 2 - 3*4 + 5*(6 + 7)/8^9";
-    // "1 + (2 - 3*4 + 5*(6 + 7)/8^9)";
-    // "1 + (2 + (- 3*4 + 5*(6 + 7)/8^9))";
-    // "1 + (2 + ((-3)*4 + 5*(6 + 7)/8^9))";
-    // "1 + (2 + (((-3)*4) + (5*(6 + 7))/8^9))";
-    // "1 + (2 + (((-3)*4) + (5*(6 + 7))/(8^9)))";
-    // "1 + (2 + (((-3)*4) + ((5*(6 + 7))/(8^9))))";
-    expressionString = expressionString.replace(/\s+/g, '');
+const expressionParser = new ExpressionParser();
 
-    let exprGroups = parseExpressionGroups(expressionString);
-    console.log('groups: ', arrToStr(exprGroups));
-    let exprTerms = parseExpressionNodes(exprGroups, true, OP_ADD, OP_SUB);
-    console.log('terms: ', arrToStr(exprTerms));
-    let exprNodes = parseExpressionNodes(exprTerms, false, OP_MUL, OP_DIV);
-    console.log('nodes:', arrToStr(exprNodes));
-    exprNodes = parseExpressionNodes(exprNodes, false, OP_POW);
-    console.log('nodes:', arrToStr(exprNodes));
-    exprNodes = parseExpressionNodes(exprNodes, false, OP_EXP);
-    console.log('nodes:', arrToStr(exprNodes));
-
-    return generateExpressionTree(exprNodes);
-}
+expressionParser.addOperator(OP_ADD, (left, right) => left + right, true, 0);
+expressionParser.addOperator(OP_SUB, (left, right) => left - right, true, 0);
+expressionParser.addOperator(OP_MUL, (left, right) => left*right, false, 1);
+expressionParser.addOperator(OP_DIV, (left, right) => left/right, false, 1);
+expressionParser.addOperator(OP_POW, (left, right) => Math.pow(left, right), false, 2);
+expressionParser.addOperator(OP_MOD, (left, right) => left%right, false, 2);
+expressionParser.addOperator(OP_EXP, (left, right) => left*Math.pow(10, right), false, 3);
 
 
 function evaluateExpression(expression) {
-    let result;
-    const expressionTree = parseExpression(expression);
+    const expressionTree = expressionParser.parseExpression(expression);
     console.log('tree: ', expressionTree.toString());
-    result = expressionTree.evaluate();
+    const result = expressionTree.traversePostorder(expressionParser.operate.bind(expressionParser));
     return result
 }
 
 
+console.log('TEST 0:');
+let result = evaluateExpression("4^2*3");
+console.log(result + '\n\n');
+
 console.log('TEST 1:');
-let result = evaluateExpression("-2 + (-5*6) - (4^2*3)");
+result = evaluateExpression("-2 + (-5*6)  (4^2*3)");
 console.log(result + '\n\n');
 
 console.log('TEST 2:');
 result = evaluateExpression("-2 + 4*3 + 5");
-console.log(result);
 console.log(result + '\n\n');
