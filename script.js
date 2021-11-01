@@ -272,8 +272,10 @@ class ExpressionParser {
 
 function isCharValid(c) {
     return (
-        /[0-9.E]/.match(c) !== null ||
-        expressionParser.operators.some(op => op.symbol === c)
+        c.length === 1 && (
+            /[0-9.πΦe()\s]/.exec(c) !== null ||
+            expressionParser.operators.some(op => op.symbol === c)
+        )
     );
 }
 
@@ -291,26 +293,86 @@ function createExpressionParser() {
     return parser;
 }
 
-// function evaluateExpression(expression) {
-//     const expressionTree = expressionParser.parseExpression(expression);
-//     // console.log('tree: ', expressionTree.toString());
-//     return expressionTree.traversePostorder(expressionParser.operate.bind(expressionParser));
-// }
-
 
 // 
 
 const expressionParser = createExpressionParser();
 
-// console.log('TEST 0:');
-// let result = expressionParser.evaluate("4^2*3");
-// console.log(result + '\n\n');
+const expressionTextArea = document.querySelector('.expression textarea');
+const outputTextArea = document.querySelector('.output textarea');
 
-// console.log('TEST 1:');
-// result = expressionParser.evaluate("-2 + (-5*6)  (4^2*3)");
-// console.log(result + '\n\n');
+const numButtons = {};
+const constButtons = {};
+const opButtons = {};
+const funcButtons = {};
+const ctrlButtons = {};
 
-// console.log('TEST 2:');
-// result = expressionParser.evaluate("-2 + 4*3 + 5");
-// console.log(result + '\n\n');
+numButtons['.'] = document.getElementById('btn-num-.');
+ctrlButtons['equals'] = document.getElementById('btn-ctrl-equals');
+ctrlButtons['clear'] = document.getElementById('btn-ctrl-clear');
+ctrlButtons['del'] = document.getElementById('btn-ctrl-del');
+funcButtons['sin'] = document.getElementById('btn-func-sin');
+funcButtons['cos'] = document.getElementById('btn-func-cos');
+funcButtons['tan'] = document.getElementById('btn-func-tan');
+constButtons['π'] = document.getElementById('btn-const-π');
+constButtons['Φ'] = document.getElementById('btn-const-Φ');
+constButtons['e'] = document.getElementById('btn-const-e');
+opButtons['('] = document.getElementById('btn-op-(');
+opButtons[')'] = document.getElementById('btn-op-)');
 
+
+ctrlButtons['equals'].addEventListener('click', (e) => {
+    outputTextArea.value = `${expressionParser.evaluate(expressionTextArea.value)}`;
+});
+
+for (let i = 0; i < 10; ++i) {
+    numButtons[`${i}`] = document.getElementById(`btn-num-${i}`);
+}
+
+for (let i = 0; i < expressionParser.operators.length; ++i) {
+    const op = expressionParser.operators[i].symbol;
+    opButtons[op] = document.getElementById(`btn-op-${op}`);
+}
+
+for (const key in numButtons) {
+    numButtons[key].addEventListener('click', e => {
+        insertStrToExpression(key);
+    });
+}
+
+for (const key in constButtons) {
+    constButtons[key].addEventListener('click', e => {
+        insertStrToExpression(key);
+    });
+}
+
+for (const key in opButtons) {
+    opButtons[key].addEventListener('click', e => {
+        insertStrToExpression(key);
+    });
+}
+
+expressionTextArea.addEventListener('beforeinput', e => {
+    if (e.data === null) return;
+
+    for (let i = 0; i < e.data.length; ++i) {
+        if (!isCharValid(e.data[i])) {
+            e.preventDefault();
+            return;
+        }
+    }
+});
+
+function insertStrToExpression(str) {
+    const sStart = expressionTextArea.selectionStart;
+    const sEnd = expressionTextArea.selectionEnd;
+    let currText = expressionTextArea.value;
+
+    currText = Array.from(currText);
+    currText.splice(sStart, sEnd - sStart, str);
+    expressionTextArea.value = currText.join('');
+
+    expressionTextArea.focus();
+    expressionTextArea.selectionStart = sStart + str.length;
+    expressionTextArea.selectionEnd = expressionTextArea.selectionStart;
+}
